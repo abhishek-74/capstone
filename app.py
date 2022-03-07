@@ -13,8 +13,10 @@ def index():
         if username == "":
             return render_template('index.html', error="Missing username in input.", result=[])
         else:
-            result = model.get_recommendation(username)
-            return render_template('index.html', results=result)
+            dict_result = model.get_recommendation(username)
+            error = "Sorry! An error occured while serving you." if dict_result['error'] != "" else ""
+            result = dict_result['result']
+            return render_template('index.html', error=error, results=result)
 
 
 if __name__ == '__main__':

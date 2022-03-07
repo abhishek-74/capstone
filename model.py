@@ -1,43 +1,63 @@
 import pickle
-import tensorflow
 import pandas as pd
 import re
-from tensorflow.keras.preprocessing.sequence import pad_sequences
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer
+from nltk.stem import WordNetLemmatizer
+
+
+#read common objects required
+tokenizer = nltk.RegexpTokenizer(r"\w+")
+nltk.download('stopwords')
+nltk.download('wordnet')
+# nltk.download('omw-1.4')
+
+stop_words = set(stopwords.words('english'))
+ps = PorterStemmer()
+lemmatizer = WordNetLemmatizer()
 
 # read the model objects for predictions
 with open("./models/recomm.pickle", "rb") as file:
     recomm_matrix = pickle.load(file)
 
-with open("./models/tokenizer.pickle", "rb") as file:
-    tokenizer = pickle.load(file)
+with open("./models/sentiment_tfidf_vectorizer.pickle", "rb") as file:
+    vectorizer = pickle.load(file)
 
-sentiment_model = tensorflow.keras.models.load_model('./models/sentiment')
-
-pd_data = pd.read_csv('./data/sample30.csv')
+with open("./models/sentiment.pickle", "rb") as file:
+    sentiment_model = pickle.load(file)
 
 def combine_and_clean_text(row):
-    #apply text preprocessing same as used when training the DL model for sentiment
-
+    # apply text preprocessing same as used when training the DL model for sentiment
     # 1. combine reviews title with reviews text
     text = " ".join([str(row['reviews_text']),
                      str(row['reviews_title']) if row['reviews_text'] is not None else ''
                      ])
+    # 2. lowercase text
+    text = text.lower()
 
-    # 2. lowercase text and remove all alphanumeric characters
-    text = re.sub("[^a-z ]", "", text.lower()).replace("  ", " ")
+    # 3. Tokenize text
+    text = tokenizer.tokenize(text)
 
-    return text
+    # 4. Remove stop words
+    text = [x for x in text if x not in stop_words]
 
-def tokenize_and_predict(X):
-    # 1. Tokenize text
-    X = tokenizer.texts_to_sequences(X)
+    # 5. Stem tokens
+    text = [ps.stem(x) for x in text]
 
-    # 2. Pad text to fix length required by the model
-    X = pad_sequences(X, truncating='post', padding='post', value=0, maxlen=575)
+    # 6. Lemmatize tokens
+    text = [lemmatizer.lemmatize(x) for x in text]
 
-    # 3. score with model prediction
-    scores = sentiment_model.predict(X, batch_size=250)
+    return " ".join(text)
 
+# read source data and clean text before starting flask application
+# this will save runtime execution of this code to boost performance
+pd_data = pd.read_csv('./data/sample30.csv')
+pd_data['clean_text'] = pd_data.apply(lambda x: combine_and_clean_text(x), axis=1)
+
+def vectorize_and_predict(X):
+    X = vectorizer.transform(X)
+    scores = sentiment_model.predict(X)
     return scores
 
 def row_to_json(row):
@@ -51,30 +71,26 @@ def row_to_json(row):
 
 def get_recommendation(userid, top=20):
     # select top 20 recommended items from recommendation engine
-    rec_items = pd.DataFrame(recomm_matrix.loc[userid].sort_values(ascending=False)[0:top]).reset_index()
+    try:
+        rec_items = pd.DataFrame(recomm_matrix.loc[userid].sort_values(ascending=False)[0:top]).reset_index()
 
-    # get the sentiments for these top 20 selected products
-    items_text = pd.merge(pd_data, rec_items, on='id', how='inner')[['id', 'brand', 'manufacturer', 'name',
-                                                                      'reviews_text', 'reviews_title']]
+        # get the sentiments for these top 20 selected products
+        items_text = pd.merge(pd_data, rec_items, on='id', how='inner')[['id', 'brand', 'manufacturer', 'name', 'clean_text']]
 
-    # preprocess text for model prediction
-    items_text['clean_text'] = items_text.apply(lambda x: combine_and_clean_text(x), axis=1)
+        # tokenize and pad text and apply model prediction
+        items_text['sentiment'] = vectorize_and_predict(items_text['clean_text'].tolist())
 
-    # tokenize and pad text and apply model prediction
-    items_text['sentiment_score'] = tokenize_and_predict(items_text['clean_text'].tolist())
+        # group by item id to get percentage of positive reviews
+        items_text['positive_perc'] = items_text.groupby('id')['sentiment'].transform(lambda x: int(100 * x.sum()/x.count()))
 
-    # apply cutoff for binary classification
-    items_text['sentiment'] = items_text['sentiment_score'].apply(lambda x: 1 if x >= 0.6 else 0)
+        # sort by positive percentage and select top 5 recommended items
+        reccoms = items_text.drop_duplicates('id', keep='first').sort_values('positive_perc', ascending=False).head(5)
 
-    # group by item id to get percentage of positive reviews
-    items_text['positive_perc'] = items_text.groupby('id')['sentiment'].transform(lambda x: int(100 * x.sum()/x.count()))
+        # convert results to json for display on UI
+        return {'error': '', 'result': reccoms.apply(lambda x: row_to_json(x), axis=1).to_list()}
 
-    # sort by positive percentage and select top 5 recommended items
-    reccoms = items_text.drop_duplicates('id', keep='first').sort_values('positive_perc', ascending=False).head(5)
-
-    # convert results to json for display on UI
-    return reccoms.apply(lambda x: row_to_json(x), axis=1).to_list()
-
+    except Exception as e1:
+        return {'error': str(e1), 'result': []}
 
 
 
