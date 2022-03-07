@@ -14,7 +14,7 @@ def index():
             return render_template('index.html', error="Missing username in input.", result=[])
         else:
             dict_result = model.get_recommendation(username)
-            error = "Sorry! An error occured while serving you." if dict_result['error'] != "" else ""
+            error = "Sorry! An error occured while serving you. It may be because of an unknown username." if dict_result['error'] != "" else ""
             result = dict_result['result']
             return render_template('index.html', error=error, results=result)
 

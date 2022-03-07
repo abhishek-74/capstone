@@ -50,10 +50,8 @@ def combine_and_clean_text(row):
 
     return " ".join(text)
 
-# read source data and clean text before starting flask application
-# this will save runtime execution of this code to boost performance
+# read source data
 pd_data = pd.read_csv('./data/sample30.csv')
-pd_data['clean_text'] = pd_data.apply(lambda x: combine_and_clean_text(x), axis=1)
 
 def vectorize_and_predict(X):
     X = vectorizer.transform(X)
@@ -77,7 +75,11 @@ def get_recommendation(userid, top=20):
         # get the sentiments for these top 20 selected products
         items_text = pd.merge(pd_data, rec_items, on='id', how='inner')[['id', 'brand', 'manufacturer', 'name', 'clean_text']]
 
-        # tokenize and pad text and apply model prediction
+        # preprocess text, step commented out as this is taking time and heroku has limited timeout period of 30 secs.
+        # we have applied this step in source data already
+        # pd_data['clean_text'] = pd_data.apply(lambda x: combine_and_clean_text(x), axis=1)
+
+        # vectorize text and apply model prediction
         items_text['sentiment'] = vectorize_and_predict(items_text['clean_text'].tolist())
 
         # group by item id to get percentage of positive reviews
