@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Capstone Project</title>
+</head>
+<body style="background-color: lightsalmon">
+    <center>
+        <h2>Sentiment Based Recommendation System - Demo</h2>
+    </center>
+    <form action="/" method="post">
+        <label>
+            <b>
+                Enter a username to see recommended products, e.g. jp71, karen, warren, solo, darklin etc.
+                <br>
+                <i>*Note - Press submit button to view recommendations, loading might take up to 30 seconds as it is using Deep Learning
+                based model on a CPU machine.</i>
+            </b>
+        </label>
+        <br><br>
+        <input type="text" name="txtUserID">
+        <input type="submit">
+        <hr>
+        <br><br>
+        <h4>Top 5 Recommended Products</h4>
+        <hr>
+        <div style="color:red">
+            {{ error }}
+        </div>
+        <table>
+            {% for item in results %}
+                <tr>
+                    <td>
+                        <b>
+                            {{ loop.index0 + 1}}.  {{ item['name'] }} by <i>{{ item['brand'] }}</i>
+                            <br>
+                            Manufacturer - {{ item['manufacturer'] }}
+                        </b>
+                        <br>
+                            {{ item['positive_perc'] }}% positive reviews by other customers
+                        <br><br>
+                    </td>
+                </tr>
+            {% endfor %}
+        </table>
+</form>
+</body>
+</html>
